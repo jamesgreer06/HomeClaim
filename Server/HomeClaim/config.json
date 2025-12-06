@@ -1,0 +1,7 @@
+{
+  "defaultRadius": 50,
+  "minDistanceBetweenHomes": 100,
+  "restoreDelay": 3000,
+  "saveOnDisconnect": true
+}
+
