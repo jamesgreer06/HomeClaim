@@ -190,13 +190,13 @@ local function handleHomeClaim(playerId, homeName)
         radius = DEFAULT_RADIUS,
         name = homeName
     })
-    MP.TriggerClientEvent(playerId, "homeClaim:createMarker", markerPacket)
+    MP.TriggerClientEvent(playerId, "HCCreateMarker", markerPacket)
 
     -- Send event to update map
     local mapPacket = Util.JsonEncode({
         homes = {[playerIdStr] = homes[playerIdStr]}
     })
-    MP.TriggerClientEvent(playerId, "homeClaim:updateMap", mapPacket)
+    MP.TriggerClientEvent(playerId, "HCUpdateMap", mapPacket)
 end
 
 -- Handle /home delete command
@@ -215,8 +215,8 @@ local function handleHomeDelete(playerId)
     MP.SendChatMessage(playerId, "Home deleted successfully.")
     
     -- Notify client to remove markers
-    MP.TriggerClientEvent(playerId, "homeClaim:removeMarker", "{}")
-    MP.TriggerClientEvent(playerId, "homeClaim:updateMap", Util.JsonEncode({homes = {}}))
+    MP.TriggerClientEvent(playerId, "HCRemoveMarker", "{}")
+    MP.TriggerClientEvent(playerId, "HCUpdateMap", Util.JsonEncode({homes = {}}))
 end
 
 -- Handle /home info command
@@ -410,22 +410,13 @@ local function restorePlayerVehicles(playerId)
             -- Ensure player ID is set to the owner
             config.pid = playerId
             
-            -- Convert full config back to JSON string (this will be the inner config)
-            local spawnData = Util.JsonEncode(config)
-            
             print("HomeClaim: Sending spawn request for vehicle " .. i .. " to player " .. playerIdStr)
             print("HomeClaim: Vehicle model (jbm): " .. tostring(config.jbm))
             print("HomeClaim: Position: " .. tostring(vehicleData.position and (vehicleData.position.x .. ", " .. vehicleData.position.y .. ", " .. vehicleData.position.z) or "none"))
-            print("HomeClaim: Spawn data length: " .. string.len(spawnData))
-            
-            -- Create JSON packet with config (double-encoded: wrapper {config: "..."} where config is JSON string)
-            local packet = Util.JsonEncode({
-                config = spawnData
-            })
             
             -- Send spawn request to client
-            print("HomeClaim: Triggering client event 'homeClaim:spawnVehicle' for player " .. playerId)
-            MP.TriggerClientEvent(playerId, "homeClaim:spawnVehicle", packet)
+            print("HomeClaim: Triggering client event 'HCSpawnVehicle' for player " .. playerId)
+            MP.TriggerClientEventJson(playerId, "HCSpawnVehicle", config)
             print("HomeClaim: Client event triggered")
             
             ::continue::
@@ -531,14 +522,14 @@ function onPlayerJoin(playerId)
             local mapPacket = Util.JsonEncode({
                 homes = {[playerIdStr] = homes[playerIdStr]}
             })
-            MP.TriggerClientEvent(playerId, "homeClaim:updateMap", mapPacket)
+            MP.TriggerClientEvent(playerId, "HCUpdateMap", mapPacket)
             
             local markerPacket = Util.JsonEncode({
                 position = homes[playerIdStr].position,
                 radius = homes[playerIdStr].radius,
                 name = homes[playerIdStr].name
             })
-            MP.TriggerClientEvent(playerId, "homeClaim:createMarker", markerPacket)
+            MP.TriggerClientEvent(playerId, "HCCreateMarker", markerPacket)
         end, 1000) -- 1 second delay
     end
     
@@ -717,3 +708,4 @@ MP.RegisterEvent("onVehicleEdited", "onVehicleEdited")
 MP.RegisterEvent("onVehicleReset", "onVehicleEdited")
 MP.RegisterEvent("homeClaim:requestVehicles", "onClientRequestVehicles")
 print("HomeClaim: All events registered")
+
