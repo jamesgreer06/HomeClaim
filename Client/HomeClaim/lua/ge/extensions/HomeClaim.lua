@@ -7,6 +7,18 @@ log("I", "HomeClaim", "Client plugin loading...")
 local markers = {}
 local mapMarkers = {}
 
+-- Remove radius marker
+local function removeRadiusMarker(name)
+    if markers[name] then
+        for _, obj in ipairs(markers[name].objects) do
+            if obj and obj:isValid() then
+                obj:delete()
+            end
+        end
+        markers[name] = nil
+    end
+end
+
 -- Create visual radius marker
 local function createRadiusMarker(position, radius, name)
     -- Remove existing marker if any
@@ -64,18 +76,6 @@ local function createRadiusMarker(position, radius, name)
         position = position,
         radius = radius
     }
-end
-
--- Remove radius marker
-local function removeRadiusMarker(name)
-    if markers[name] then
-        for _, obj in ipairs(markers[name].objects) do
-            if obj and obj:isValid() then
-                obj:delete()
-            end
-        end
-        markers[name] = nil
-    end
 end
 
 -- Add map marker
@@ -172,34 +172,27 @@ end
 local function onHomeClaimSpawnVehicle(data)
     log("I", "HomeClaim", "onHomeClaimSpawnVehicle called")
     -- First decode: wrapper packet {"config": "..."}
-    local decoded = jsonDecode(data)
-    if not decoded or not decoded.config then
-        log("W", "HomeClaim", "Failed to decode wrapper or missing config: " .. tostring(decoded))
+    local config = jsonDecode(data)
+    if not config then
+        log("W", "HomeClaim", "Failed to decode wrapper or missing config: " .. tostring(config))
         return
     end
     log("I", "HomeClaim", "Successfully decoded wrapper packet")
     
-    -- Second decode: vehicle config JSON string
-    local vehicleConfig = jsonDecode(decoded.config)
-    if not vehicleConfig then
-        log("W", "HomeClaim", "Failed to decode vehicle config JSON")
-        return
-    end
-    
     -- Extract position
     local spawnPos = nil
-    if vehicleConfig.pos and type(vehicleConfig.pos) == "table" and #vehicleConfig.pos >= 3 then
-        spawnPos = vec3(vehicleConfig.pos[1], vehicleConfig.pos[2], vehicleConfig.pos[3])
+    if config.pos and type(config.pos) == "table" and #config.pos >= 3 then
+        spawnPos = vec3(config.pos[1], config.pos[2], config.pos[3])
     end
     
     -- Extract rotation
     local spawnRot = nil
-    if vehicleConfig.rot and type(vehicleConfig.rot) == "table" and #vehicleConfig.rot >= 4 then
-        spawnRot = quat(vehicleConfig.rot[1], vehicleConfig.rot[2], vehicleConfig.rot[3], vehicleConfig.rot[4])
+    if config.rot and type(config.rot) == "table" and #config.rot >= 4 then
+        spawnRot = quat(config.rot[1], config.rot[2], config.rot[3], config.rot[4])
     end
     
     -- Extract jbeam (vehicle model)
-    local jbeam = vehicleConfig.jbm
+    local jbeam = config.jbm
     if not jbeam then
         log("W", "HomeClaim", "No jbeam/model specified in vehicle config")
         return
@@ -211,14 +204,14 @@ local function onHomeClaimSpawnVehicle(data)
     end
     
     -- Extract part config filename (if available)
-    local partConfig = vehicleConfig.vcf and vehicleConfig.vcf.partConfigFilename or nil
+    local partConfig = config.vcf and config.vcf.partConfigFilename or nil
     
     -- Spawn vehicle using core_vehicles.spawnNewVehicle
     -- Use the full config JSON string for spawnOptions.config (decoded.config is the inner JSON string)
     local spawnOptions = {
         pos = spawnPos,
         rot = spawnRot or quat(0, 0, 1, 0),
-        config = decoded.config, -- Full vehicle config JSON string
+        config = config, -- Full vehicle config JSON string
         autoEnterVehicle = true,
         centeredPosition = true
     }
@@ -226,7 +219,6 @@ local function onHomeClaimSpawnVehicle(data)
     log("I", "HomeClaim", "Spawning vehicle: " .. jbeam .. " at position " .. tostring(spawnPos))
     core_vehicles.spawnNewVehicle(jbeam, spawnOptions)
 end
-
 
 -- Track if we've already requested vehicle restoration
 local hasRequestedVehicles = false
@@ -253,47 +245,63 @@ local function onGameStateUpdate(state)
     end
 end
 
--- Register event handlers (only if MPGameNetwork is available)
-if MPGameNetwork then
-    log("I", "HomeClaim", "MPGameNetwork available, registering event handlers")
-    AddEventHandler("homeClaim:spawnVehicle", function(data)
-        log("I", "HomeClaim", "*** RECEIVED homeClaim:spawnVehicle event ***")
-        log("I", "HomeClaim", "Data type: " .. type(data) .. ", length: " .. (data and tostring(string.len(data)) or "nil"))
-        if data ~= "null" and data then
-            log("I", "HomeClaim", "Calling onHomeClaimSpawnVehicle...")
-            onHomeClaimSpawnVehicle(data)
-        else
-            log("W", "HomeClaim", "SpawnVehicle event received with null or empty data")
-        end
-    end)
-    log("I", "HomeClaim", "Event handler registered for homeClaim:spawnVehicle")
+local function HCSpawnVehicle(data)
+    log("I", "HomeClaim", "*** RECEIVED HCSpawnVehicle event ***")
+    log("I", "HomeClaim", "Data type: " .. type(data) .. ", length: " .. (data and tostring(string.len(data)) or "nil"))
+    if data ~= "null" and data then
+        log("I", "HomeClaim", "Calling onHomeClaimSpawnVehicle...")
+        onHomeClaimSpawnVehicle(data)
+    else
+        log("W", "HomeClaim", "SpawnVehicle event received with null or empty data")
+    end
+    log("I", "HomeClaim", "Event handler registered for HCSpawnVehicle")
+end
 
-    AddEventHandler("homeClaim:createMarker", function(data)
-        if data ~= "null" and data then
-            data = jsonDecode(data)
-            if data then
-                onHomeClaimCreateMarker(data)
-            end
+local function HCCreateMarker(data)
+    if data ~= "null" and data then
+        data = jsonDecode(data)
+        if data then
+            onHomeClaimCreateMarker(data)
         end
-    end)
+    end
+end
 
-    AddEventHandler("homeClaim:removeMarker", function(data)
-        onHomeClaimRemoveMarker({})
-    end)
+local function HCRemoveMarker(data)
+    onHomeClaimRemoveMarker({})
+end
 
-    AddEventHandler("homeClaim:updateMap", function(data)
-        if data ~= "null" and data then
-            data = jsonDecode(data)
-            if data then
-                onHomeClaimUpdateMap(data)
-            end
+local function HCUpdateMap(data)
+    if data ~= "null" and data then
+        data = jsonDecode(data)
+        if data then
+            onHomeClaimUpdateMap(data)
         end
-    end)
-else
-    log("W", "HomeClaim", "MPGameNetwork not available, event handlers not registered")
+    end
+end
+
+local function onExtensionLoaded()
+    -- Register event handlers (only if MPGameNetwork is available)
+    if MPGameNetwork then
+        log("I", "HomeClaim", "MPGameNetwork available, registering event handlers")
+        AddEventHandler("HCSpawnVehicle", HCSpawnVehicle)
+        AddEventHandler("HCCreateMarker", HCCreateMarker)
+        AddEventHandler("HCRemoveMarker", HCRemoveMarker)
+        AddEventHandler("HCUpdateMap", HCUpdateMap)
+    else
+        log("W", "HomeClaim", "MPGameNetwork not available, event handlers not registered")
+    end
+end
+
+local function onExtensionUnloaded()
+
 end
 
 -- Export game state update handler
 M.onGameStateUpdate = onGameStateUpdate
+
+M.onExtensionLoaded = onExtensionLoaded
+M.onExtensionUnloaded = onExtensionUnloaded
+
+M.onInit = function() setExtensionUnloadMode(M, "manual") end
 
 return M
